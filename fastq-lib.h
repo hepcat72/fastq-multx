@@ -89,6 +89,8 @@ void free_fq(struct fq *fq);
 
 // open a file, possibly gzipped, exit on failure
 FILE *gzopen(const char *in, const char *mode, bool *isgz);
+// open a file, format supplied, exit on failure
+FILE *gzopen(const char *f, const char *m, const char c);
 int gzclose(FILE *f, bool isgz);
 
 // keep track of poor quals (n == "file number", maybe should have persistent stat struct instead?)

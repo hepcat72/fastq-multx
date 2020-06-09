@@ -34,7 +34,7 @@ See "void usage" below for usage.
 #define THFIXFACTOR 20
 #define endstr(e) (e=='e'?"end":e=='b'?"start":"n/a")
 
-const char * VERSION = "1.4";
+const char * VERSION = "1.5";
 #define SVNREV 1
 
 // barcode
@@ -121,6 +121,8 @@ int main (int argc, char **argv) {
 	char verify='\0';
 	bool noexec = false;
 	const char *group = NULL;
+	char fmt='\0';
+        bool fmtgz = 0;
     bool usefile1 = false;
     int phred = 33;
     double threshfactor = 1;
@@ -129,7 +131,7 @@ int main (int argc, char **argv) {
 	int i;
 	bool omode = false;
 	char *bfil = NULL;
-	while (	(c = getopt (argc, argv, "-DzxnHhbeov:m:M:B:g:L:l:G:q:d:t:")) != -1) {
+	while (	(c = getopt (argc, argv, "-DzxnHhbeov:m:M:B:g:L:l:G:f:q:d:t:")) != -1) {
 		switch (c) t:{
 		case '\1':
                        	if (omode) {
@@ -158,6 +160,12 @@ int main (int argc, char **argv) {
 		case 'H': bcinheader = 1; usefile1=1; break;
 		case 'e': end = 'e'; break;
 		case 'G': group = optarg; break;
+		case 'f':
+                        if (strlen(optarg)>1) {
+				fprintf(stderr, "Option -f requires a single character argument");
+				exit(1);
+			}
+			fmt = *optarg; break;
 		case 'g':
 			guide = optarg;
 			in[f_n++] = optarg;
@@ -195,14 +203,27 @@ int main (int argc, char **argv) {
         }
 
 	if (group && !list) {
-		fprintf(stderr, "Error: -G only works with -l\n");
-		return 1;
+            fprintf(stderr, "Error: -G only works with -l\n");
+            return 1;
 	}
 
-    if ((list && guide) || (list && bfil) || (guide && bfil)) {
+        if (fmt) {
+            if (fmt != 'g' && fmt != 'z' && fmt != 'd' && fmt != 't') {
+		fprintf(stderr, "Error: Format (-f %c) must be one of: ['g','d','z','t'].\n", fmt);
+		return 1;
+            }
+            else if (fmt == 't') {
+                fmtgz = 0;
+            }
+            else {
+                fmtgz = 1;
+            }
+        }
+
+        if ((list && guide) || (list && bfil) || (guide && bfil)) {
             fprintf(stderr, "Error: Only one of -B -g or -l\n");
             return 1;
-    }
+        }
 
 	if (f_n != f_oarg) {
 		fprintf(stderr, "Error: number of input files (%d) must match number of output files following '-o'.\n", f_n);
@@ -219,7 +240,13 @@ int main (int argc, char **argv) {
 	FILE *fin[6];
 	bool gzin[6]; meminit(gzin);
 	for (i = 0; i < f_n; ++i) {
-		fin[i]=gzopen(in[i],"r",&gzin[i]);
+            if (fmt) {
+                fin[i]=gzopen(in[i],"r",fmt);
+                gzin[i] = fmtgz;
+            }
+            else {
+                fin[i]=gzopen(in[i],"r",&gzin[i]);
+            }
 	}
 
 	// set all to null, zero
@@ -707,7 +734,13 @@ int main (int argc, char **argv) {
                 fseek(fin[i],0,0);
             else {
                 pclose(fin[i]);
-                fin[i]=gzopen(in[i],"r",&gzin[i]);
+                if (fmt) {
+                    fin[i]=gzopen(in[i],"r",fmt);
+                    gzin[i] = fmtgz;
+                }
+                else {
+                    fin[i]=gzopen(in[i],"r",&gzin[i]);
+                }
             }
         }
 
@@ -825,10 +858,19 @@ int main (int argc, char **argv) {
 			bc[b].out[i][p-out[i]]='\0';
 			strcat(bc[b].out[i], bc[b].id.s);
 			strcat(bc[b].out[i], p+1);
-			if (!(bc[b].fout[i]=gzopen(bc[b].out[i], "w", &bc[b].gzout[i]))) {
-				fprintf(stderr, "Error opening output file '%s': %s\n",bc[b].out[i], strerror(errno));
-				return 1;
-			}
+                        if (fmt) {
+                            bc[b].gzout[i] = fmtgz;
+                            if (!(bc[b].fout[i]=gzopen(bc[b].out[i], "w", fmt))) {
+                                fprintf(stderr, "Error opening output file '%s': %s\n",bc[b].out[i], strerror(errno));
+                                return 1;
+                            }
+                        }
+                        else {
+                            if (!(bc[b].fout[i]=gzopen(bc[b].out[i], "w", &bc[b].gzout[i]))) {
+                                fprintf(stderr, "Error opening output file '%s': %s\n",bc[b].out[i], strerror(errno));
+                                return 1;
+                            }
+                        }
 		}
 	}
 
@@ -838,7 +880,13 @@ int main (int argc, char **argv) {
 			fseek(fin[i],0,0);
 		else {
 			pclose(fin[i]);
-			fin[i]=gzopen(in[i],"r",&gzin[i]);
+                        if (fmt) {
+                            fin[i]=gzopen(in[i],"r",fmt);
+                            gzin[i] = fmtgz;
+                        }
+                        else {
+                            fin[i]=gzopen(in[i],"r",&gzin[i]);
+                        }
 		}
 	}
 
@@ -1136,11 +1184,11 @@ void pickbest(const void *nodep, const VISIT which, const int depth)
 
 void usage(FILE *f) {
 	fprintf(f,
-"Usage: fastq-multx [-g|-l|-B] <barcodes.fil> <read1.fq> -o r1.%%.fq [mate.fq -o r2.%%.fq] ...\n"
+"Usage: fastq-multx [-g|-l|-B] <barcodes.fil> <read1.fq> [mate.fq] -o r1.%%.fq [-o r2.%%.fq] ...\n"
 "Version: %s.%d\n"
 "\n"
 "Output files must contain a '%%' sign which is replaced with the barcode id in the barcodes file.\n"
-"Output file can be n/a to discard the corresponding data (use this for the barcode read)\n"
+"Output file can be 'n/a' to discard the corresponding data (use this for the index read)\n"
 "\n"
 "The barcodes file (-B) looks like this [where '-NNNNNNNN' for a dual index is optional]:\n"
 "\n"
@@ -1172,6 +1220,7 @@ void usage(FILE *f) {
 "-l BCFIL    Determine barcodes from any read, using BCFIL as a master list\n"
 "-L BCFIL    Determine barcodes from <read1.fq>, using BCFIL as a master list\n"
 "-B BCFIL    Use barcodes from BCFIL, no determination step, codes in <read1.fq>\n"
+"-f FMT      Force input file format to be one of 'g' for gzip, 'z' for zip, 'd' for dz, or 't' for text. (inferred from file ext)\n"
 "-H          Use barcodes from illumina's header, instead of a read\n"
 "-b          Force beginning of line (5') for barcode matching\n"
 "-e          Force end of line (3') for barcode matching\n"

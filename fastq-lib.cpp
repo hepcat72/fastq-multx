@@ -153,11 +153,31 @@ int gzclose(FILE *f, bool isgz) {
 	return isgz ? pclose(f) : fclose(f);
 }
 
+//Determines format via extension
 FILE *gzopen(const char *f, const char *m, bool*isgz) {
+        const char * ext = fext(f);
+        char c = '\0';
+        if (strcmp(ext,".gz")) {
+            c = 'g';
+            *isgz = 1;
+        } else if (strcmp(ext,".zip")) {
+            c = 'z';
+            *isgz = 1;
+        } else if (strcmp(ext,".dsrc")||strcmp(ext,".dz")) {
+            c = 'd';
+            *isgz = 1;
+        } else {
+            c = 'd';
+            *isgz = 0;
+        }
+        return gzopen(f,m,c);
+}
+
+//Format provided via c
+FILE *gzopen(const char *f, const char *m, const char c) {
 	// maybe use zlib some day?
         FILE *h;
-        const char * ext = fext(f);
-        if (!strcmp(ext,".gz")) {
+        if (c == 'g') {
             char *tmp=(char *)malloc(strlen(f)+100);
             if (strchr(m,'w')) {
                     strcpy(tmp, "gzip -3 --rsyncable > '");
@@ -169,9 +189,8 @@ FILE *gzopen(const char *f, const char *m, bool*isgz) {
                     strcat(tmp, "'");
             }
             h = popen(tmp, m);
-            *isgz=1;
             free(tmp);
-        } else if (!strcmp(ext,".zip")) {
+        } else if (c == 'z') {
             char *tmp=(char *)malloc(strlen(f)+100);
             if (strchr(m,'w')) {
                     strcpy(tmp, "zip -q '");
@@ -183,9 +202,8 @@ FILE *gzopen(const char *f, const char *m, bool*isgz) {
                     strcat(tmp, "'");
             }
             h = popen(tmp, m);
-            *isgz=1;
             free(tmp);
-        } else if (!strcmp(ext,".dsrc")||!strcmp(ext,".dz")) {
+        } else if (c == 'd') {
             char *tmp=(char *)malloc(strlen(f)+100);
             if (strchr(m,'w')) {
                     // default 2x better compression and 3x better speed
@@ -199,11 +217,9 @@ FILE *gzopen(const char *f, const char *m, bool*isgz) {
                     strcat(tmp, "'");
             }
             h = popen(tmp, m);
-            *isgz=1;
             free(tmp);
         } else {
                 h = fopen(f, m);
-                *isgz=0;
         }
         if (!h) {
                 fprintf(stderr, "Error opening file '%s': %s\n",f, strerror(errno));
